@@ -1,52 +1,88 @@
 # openai-server
 
-## 服务实现内容，
-1、代理其他 openai 服务的 api 接口
-2、提供独立的 access_key，只有合法的access_key才能请求openai接口
-3、通过 userId 置换 access_key，access_key由是根据userId + 服务端配置 进行加密的
-4、当校验access_key是否合法时，需要根据服务端配置 解密access_key 并获取 userId，同时校验userId是否存在
-5、支持根据 userId配置黑名单，黑名单内的禁止访问
-6、支持基于令牌桶的限流策略，根据userId限流，为了保持逻辑简单，所有userId采用同一个限流策略
+该项目实现了一个简单的 OpenAI 代理服务，核心能力包括：
 
+* 为合法的 `userId` 签发访问凭证 `access_key`。
+* 使用令牌桶对用户进行限流，所有用户共享同一套限流配置。
+* 拦截并校验调用方提供的 `access_key`，支持黑名单控制。
+* 代理调用下游 OpenAI Chat Completions 接口并返回结果。
 
-## 服务提供接口如下
+## 快速开始
 
-1、获取access_key接口
-{base_url}/api/v1/get_access_key
-入参： userId
-出参： access_key
+1. 准备配置文件，可以直接拷贝 `config.sample.json` 并按需修改：
+   ```bash
+   cp config.sample.json config.json
+   ```
+   需要重点关注以下字段：
+   * `service.secret_key`：用于生成 access_key 的服务端密钥。
+   * `service.users`：允许访问的用户列表。
+   * `service.blacklist`：被拒绝访问的用户。
+   * `openai.target_url` / `openai.api_key`：被代理的 OpenAI 接口与凭证。
+   * `rate_limit`：限流配置。
 
+2. 运行服务：
+   ```bash
+   CONFIG_PATH=./config.json go run ./cmd/server
+   ```
 
-2、open ai接口:
-示例如下：
-curl -X POST {base_url}/api/v1/chat/completions \
--H "Authorization: {access_key}" \
--H "Content-Type: application/json" \
--d '{
-    "model": "{model_name}",
-    "messages": [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant."
-        },
-        {
-            "role": "user", 
-            "content": "你是谁？"
-        }
-    ]
-}'
+3. 获取 access_key：
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/get_access_key \
+     -H "Content-Type: application/json" \
+     -d '{"userId":"alice"}'
+   ```
 
+4. 代理调用 OpenAI 接口：
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/chat/completions \
+     -H "Authorization: <access_key>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "model": "gpt-4o-mini",
+       "messages": [
+         {"role": "system", "content": "You are a helpful assistant."},
+         {"role": "user", "content": "你好"}
+       ]
+     }'
+   ```
 
+## Docker 镜像
 
-## 被代理的接口示例：
-curl {target_url} \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer {access_key}" \
-  -d '{
-    "model": "{model_name}",
-    "messages": "{messages}""
-  }'
+使用下面的命令即可构建镜像：
+```bash
+docker build -t openai-server:latest .
+```
 
-其中
-target_url、access_key 本地配置
-model_name、messages 从参数读取
+运行镜像时可以通过挂载配置文件覆盖默认配置：
+```bash
+docker run -p 8080:8080 \
+  -v $(pwd)/config.json:/app/config.json \
+  -e CONFIG_PATH=/app/config.json \
+  openai-server:latest
+```
+
+## Kubernetes 部署
+
+`k8s/deployment.yaml` 提供了一个基础示例，包含 ConfigMap、Deployment 与 Service：
+```bash
+kubectl apply -f k8s/deployment.yaml
+```
+
+请根据实际环境修改镜像地址 (`image`) 以及 ConfigMap 中的配置内容。
+
+## 项目结构
+
+```
+cmd/server/          # HTTP 服务入口
+internal/auth/       # access_key 生成与校验逻辑
+internal/config/     # 配置加载逻辑
+internal/proxy/      # 下游 OpenAI 接口代理
+internal/ratelimit/  # 简单的令牌桶限流实现
+```
+
+## 开发
+
+* 格式化代码：`go fmt ./...`
+* 依赖管理：`go mod tidy`
+
+欢迎根据业务需求继续扩展。

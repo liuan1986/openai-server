@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openai-server-config
+  labels:
+    app: openai-server
+data:
+  config.json: |
+    {
+      "service": {
+        "secret_key": "my-secret",
+        "users": ["alice", "bob"],
+        "blacklist": []
+      },
+      "openai": {
+        "target_url": "https://api.openai.com/v1/chat/completions",
+        "api_key": "your-openai-api-key"
+      },
+      "rate_limit": {
+        "capacity": 5,
+        "refill_interval_second": 60
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openai-server
+  labels:
+    app: openai-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openai-server
+  template:
+    metadata:
+      labels:
+        app: openai-server
+    spec:
+      containers:
+        - name: openai-server
+          image: your-registry/openai-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CONFIG_PATH
+              value: /config/config.json
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: openai-server-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openai-server
+  labels:
+    app: openai-server
+spec:
+  selector:
+    app: openai-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

@@ -1,0 +1,15 @@
+{
+  "service": {
+    "secret_key": "my-secret",
+    "users": ["alice", "bob"],
+    "blacklist": ["blocked-user"]
+  },
+  "openai": {
+    "target_url": "https://api.openai.com/v1/chat/completions",
+    "api_key": "your-openai-api-key"
+  },
+  "rate_limit": {
+    "capacity": 5,
+    "refill_interval_second": 60
+  }
+}
